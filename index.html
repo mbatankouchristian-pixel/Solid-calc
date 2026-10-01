@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Bordereau de chantier — Calcul BTP</title>
+<meta name="description" content="Calcul de volumes de béton, agglomérés, mortier et planchers à corps creux." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#16232E" />
+<link rel="icon" href="icons/icon-192.png" />
+
+<!-- iOS install support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Bordereau BTP" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;700&display=swap');
+  * { box-sizing: border-box; }
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+  }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  ::selection { background: #E28D28; color: #16232E; }
+  /* Minimal utility classes standing in for Tailwind (no build step here) */
+  .min-h-screen{min-height:100vh}.w-full{width:100%}.max-w-5xl{max-width:64rem}
+  .mx-auto{margin-left:auto;margin-right:auto}.px-5{padding-left:1.25rem;padding-right:1.25rem}
+  .px-4{padding-left:1rem;padding-right:1rem}.px-3{padding-left:.75rem;padding-right:.75rem}
+  .py-10{padding-top:2.5rem;padding-bottom:2.5rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}
+  .py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.p-6{padding:1.5rem}
+  .mb-8{margin-bottom:2rem}.mb-7{margin-bottom:1.75rem}.mb-4{margin-bottom:1rem}
+  .mb-5{margin-bottom:1.25rem}.mb-1{margin-bottom:.25rem}.mt-1{margin-top:.25rem}
+  .mt-2{margin-top:.5rem}.mt-10{margin-top:2.5rem}.pt-5{padding-top:1.25rem}
+  .flex{display:flex}.flex-wrap{flex-wrap:wrap}.grid{display:grid}
+  .grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .gap-2{gap:.5rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-6{gap:1.5rem}
+  .items-start{align-items:flex-start}.items-baseline{align-items:baseline}
+  .justify-between{justify-content:space-between}.block{display:block}
+  .inline-flex{display:inline-flex}.relative{position:relative}
+  .rounded-sm{border-radius:.25rem}.overflow-hidden{overflow:hidden}
+  .space-y-2\.5 > * + *{margin-top:.625rem}.text-right{text-align:right}
+  .whitespace-nowrap{white-space:nowrap}
+  @media (min-width: 768px){ .md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr));} }
+</style>
+</head>
+<body style="background:#16232E;">
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<script>
+"use strict";
+// @ts-nocheck
+const { useState, useMemo } = React;
+/* ---------- Données de référence (valeurs indicatives BTP) ---------- */
+const DOSAGES_BETON = {
+    150: { sacs: 3, sable: 0.5, gravier: 0.8, eau: 90, label: "150 kg/m³ — Béton de propreté" },
+    200: { sacs: 4, sable: 0.48, gravier: 0.8, eau: 100, label: "200 kg/m³ — Gros béton" },
+    250: { sacs: 5, sable: 0.45, gravier: 0.8, eau: 125, label: "250 kg/m³ — Béton faiblement armé" },
+    300: { sacs: 6, sable: 0.42, gravier: 0.8, eau: 150, label: "300 kg/m³ — Dallage courant" },
+    350: { sacs: 7, sable: 0.4, gravier: 0.8, eau: 175, label: "350 kg/m³ — Béton armé courant (poteaux, poutres, radier)" },
+    400: { sacs: 8, sable: 0.38, gravier: 0.8, eau: 200, label: "400 kg/m³ — Béton fortement armé / éléments minces" },
+};
+const DOSAGES_MORTIER = {
+    250: { sacs: 5, sable: 1.0, eau: 200, label: "250 kg/m³ — Mortier de pose (joints agglos)" },
+    300: { sacs: 6, sable: 1.0, eau: 220, label: "300 kg/m³ — Mortier de pose courant" },
+    350: { sacs: 7, sable: 1.0, eau: 250, label: "350 kg/m³ — Mortier d'enduit / chape" },
+    400: { sacs: 8, sable: 1.0, eau: 275, label: "400 kg/m³ — Mortier étanche" },
+};
+const FORMATS_AGGLO = {
+    "10x20x40": { l: 0.4, h: 0.2, ep: 0.1, label: "10×20×40 (cloison)" },
+    "15x20x40": { l: 0.4, h: 0.2, ep: 0.15, label: "15×20×40 (mur courant)" },
+    "20x20x40": { l: 0.4, h: 0.2, ep: 0.2, label: "20×20×40 (mur porteur)" },
+};
+function round2(n) { return Math.round(n * 100) / 100; }
+function ceil0(n) { return Math.ceil(n); }
+/* ---------- UI atoms ---------- */
+function Field({ label, unit, value, onChange, step = "0.01", min = "0" }) {
+    return (React.createElement("label", { className: "block mb-4" },
+        React.createElement("span", { className: "block", style: { fontFamily: "'IBM Plex Mono', monospace", color: "#9FB4C7", fontSize: "11px", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" } },
+            label,
+            " ",
+            unit ? React.createElement("span", { style: { color: "#5E7A8C" } },
+                "(",
+                unit,
+                ")") : null),
+        React.createElement("input", { type: "number", inputMode: "decimal", step: step, min: min, value: value, onChange: (e) => onChange(e.target.value), className: "w-full px-3 py-2 rounded-sm", style: { background: "#0F1922", border: "1px solid #2A4258", color: "#EDEFF2", fontFamily: "'IBM Plex Mono', monospace", fontSize: "16px", outline: "none" } })));
+}
+function Select({ label, value, onChange, options }) {
+    return (React.createElement("label", { className: "block mb-4" },
+        React.createElement("span", { className: "block", style: { fontFamily: "'IBM Plex Mono', monospace", color: "#9FB4C7", fontSize: "11px", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" } }, label),
+        React.createElement("select", { value: value, onChange: (e) => onChange(e.target.value), className: "w-full px-3 py-2 rounded-sm", style: { background: "#0F1922", border: "1px solid #2A4258", color: "#EDEFF2", fontFamily: "'IBM Plex Mono', monospace", fontSize: "14px", outline: "none" } }, options.map((o) => React.createElement("option", { key: o.value, value: o.value }, o.text)))));
+}
+function Segmented({ options, value, onChange }) {
+    return (React.createElement("div", { className: "inline-flex rounded-sm overflow-hidden mb-5", style: { border: "1px solid #2A4258" } }, options.map((o) => (React.createElement("button", { key: o.value, onClick: () => onChange(o.value), className: "px-3 py-1.5", style: { fontFamily: "'IBM Plex Mono', monospace", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.05em", background: value === o.value ? "#E28D28" : "transparent", color: value === o.value ? "#16232E" : "#9FB4C7", fontWeight: value === o.value ? 700 : 400, border: "none", cursor: "pointer" } }, o.text)))));
+}
+function Bordereau({ title, ref_, lines, note }) {
+    return (React.createElement("div", { className: "relative p-6 rounded-sm", style: { background: "#D9C7A3", color: "#1B2430", backgroundImage: "repeating-linear-gradient(0deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 1px, transparent 1px, transparent 28px)", boxShadow: "0 12px 30px rgba(0,0,0,0.35)" } },
+        React.createElement("div", { className: "flex items-start justify-between mb-1" },
+            React.createElement("div", null,
+                React.createElement("div", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "13px", letterSpacing: "0.14em", color: "#8A6A2F" } }, "BORDEREAU DE COMMANDE"),
+                React.createElement("div", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "22px", fontWeight: 600, letterSpacing: "0.02em" } }, title)),
+            React.createElement("div", { className: "text-right", style: { fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: "#8A6A2F" } },
+                "R\u00C9F. ",
+                ref_)),
+        React.createElement("div", { style: { borderTop: "1.5px dashed #8A6A2F", margin: "12px 0 14px" } }),
+        React.createElement("div", { className: "space-y-2.5" }, lines.map((l, i) => (React.createElement("div", { key: i, className: "flex items-baseline justify-between gap-4" },
+            React.createElement("span", { style: { fontFamily: "'Inter', sans-serif", fontSize: "13.5px", color: "#4A3F2C" } }, l.label),
+            React.createElement("span", { className: "whitespace-nowrap", style: { fontFamily: "'IBM Plex Mono', monospace", fontSize: l.big ? "20px" : "15px", fontWeight: l.big ? 700 : 500 } }, l.value))))),
+        note && (React.createElement("div", { style: { marginTop: "16px", paddingTop: "10px", borderTop: "1px solid rgba(0,0,0,0.15)", fontFamily: "'Inter', sans-serif", fontSize: "11.5px", color: "#6B5B3D", fontStyle: "italic" } }, note))));
+}
+function Panel({ children }) {
+    return React.createElement("div", { className: "p-6 rounded-sm", style: { background: "#1B2A38", border: "1px solid #2A4258" } }, children);
+}
+/* ---------- Modules ---------- */
+function ModuleBeton() {
+    const [mode, setMode] = useState("dimensions");
+    const [L, setL] = useState("6");
+    const [l, setLg] = useState("0.35");
+    const [h, setH] = useState("0.9");
+    const [surf, setSurf] = useState("35");
+    const [ep, setEp] = useState("0.15");
+    const [volDirect, setVolDirect] = useState("10");
+    const [dosage, setDosage] = useState("350");
+    const [perte, setPerte] = useState("5");
+    const volBrut = useMemo(() => {
+        if (mode === "dimensions")
+            return (parseFloat(L) || 0) * (parseFloat(l) || 0) * (parseFloat(h) || 0);
+        if (mode === "surface")
+            return (parseFloat(surf) || 0) * (parseFloat(ep) || 0);
+        return parseFloat(volDirect) || 0;
+    }, [mode, L, l, h, surf, ep, volDirect]);
+    const majoration = 1 + (parseFloat(perte) || 0) / 100;
+    const vol = volBrut * majoration;
+    const d = DOSAGES_BETON[dosage];
+    const sacs = ceil0(vol * d.sacs);
+    const ciment_kg = round2(vol * d.sacs * 50);
+    const sable = round2(vol * d.sable);
+    const gravier = round2(vol * d.gravier);
+    const eau = Math.round(vol * d.eau);
+    return (React.createElement("div", { className: "grid md:grid-cols-2 gap-6" },
+        React.createElement(Panel, null,
+            React.createElement("h3", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "18px", color: "#EDEFF2", marginBottom: "16px" } }, "Volume & dosage b\u00E9ton"),
+            React.createElement(Segmented, { value: mode, onChange: setMode, options: [
+                    { value: "dimensions", text: "L × l × h" },
+                    { value: "surface", text: "Surface × ép." },
+                    { value: "volume", text: "Volume direct" },
+                ] }),
+            mode === "dimensions" && (React.createElement("div", { className: "grid grid-cols-3 gap-3" },
+                React.createElement(Field, { label: "Longueur", unit: "m", value: L, onChange: setL }),
+                React.createElement(Field, { label: "Largeur", unit: "m", value: l, onChange: setLg }),
+                React.createElement(Field, { label: "Hauteur", unit: "m", value: h, onChange: setH }))),
+            mode === "surface" && (React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "Surface", unit: "m\u00B2", value: surf, onChange: setSurf }),
+                React.createElement(Field, { label: "\u00C9paisseur", unit: "m", value: ep, onChange: setEp }))),
+            mode === "volume" && React.createElement(Field, { label: "Volume", unit: "m\u00B3", value: volDirect, onChange: setVolDirect }),
+            React.createElement(Select, { label: "Dosage ciment", value: dosage, onChange: setDosage, options: Object.entries(DOSAGES_BETON).map(([k, v]) => ({ value: k, text: v.label })) }),
+            React.createElement(Field, { label: "Majoration / pertes", unit: "%", value: perte, onChange: setPerte, step: "1" })),
+        React.createElement(Bordereau, { title: "B\u00E9ton", ref_: `DOSAGE ${dosage}`, lines: [
+                { label: "Volume net à couler", value: `${round2(volBrut)} m³` },
+                { label: `Avec majoration ${perte}%`, value: `${round2(vol)} m³`, big: true },
+                { label: "Ciment", value: `${sacs} sacs (50 kg)` },
+                { label: "soit ciment total", value: `${ciment_kg} kg` },
+                { label: "Sable", value: `${sable} m³` },
+                { label: "Gravier", value: `${gravier} m³` },
+                { label: "Eau de gâchage", value: `${eau} L` },
+            ], note: "Valeurs indicatives pour granulats courants (0/5 et 5/15). \u00C0 ajuster selon \u00E9tude de formulation b\u00E9ton du chantier." })));
+}
+function ModuleAgglos() {
+    const [L, setL] = useState("42");
+    const [H, setH] = useState("3");
+    const [ouvertures, setOuvertures] = useState("6");
+    const [format, setFormat] = useState("15x20x40");
+    const [joint, setJoint] = useState("1.5");
+    const [perte, setPerte] = useState("5");
+    const f = FORMATS_AGGLO[format];
+    const jointM = (parseFloat(joint) || 0) / 100;
+    const surfBrute = (parseFloat(L) || 0) * (parseFloat(H) || 0);
+    const surfNette = Math.max(0, surfBrute - (parseFloat(ouvertures) || 0));
+    const surfUnitaire = (f.l + jointM) * (f.h + jointM);
+    const majoration = 1 + (parseFloat(perte) || 0) / 100;
+    const nbAgglos = ceil0((surfNette / surfUnitaire) * majoration);
+    const agglosParM2 = round2(1 / surfUnitaire);
+    return (React.createElement("div", { className: "grid md:grid-cols-2 gap-6" },
+        React.createElement(Panel, null,
+            React.createElement("h3", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "18px", color: "#EDEFF2", marginBottom: "16px" } }, "Nombre d'agglom\u00E9r\u00E9s (parpaings)"),
+            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "Longueur cumul\u00E9e des murs", unit: "m", value: L, onChange: setL }),
+                React.createElement(Field, { label: "Hauteur de mur", unit: "m", value: H, onChange: setH })),
+            React.createElement(Field, { label: "Surface des ouvertures (portes, fen\u00EAtres)", unit: "m\u00B2", value: ouvertures, onChange: setOuvertures }),
+            React.createElement(Select, { label: "Format d'agglo", value: format, onChange: setFormat, options: Object.entries(FORMATS_AGGLO).map(([k, v]) => ({ value: k, text: v.label })) }),
+            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "\u00C9paisseur joint", unit: "cm", value: joint, onChange: setJoint, step: "0.5" }),
+                React.createElement(Field, { label: "Majoration / casse", unit: "%", value: perte, onChange: setPerte, step: "1" }))),
+        React.createElement(Bordereau, { title: "Agglom\u00E9r\u00E9s", ref_: format, lines: [
+                { label: "Surface brute des murs", value: `${round2(surfBrute)} m²` },
+                { label: "Surface nette (hors ouvertures)", value: `${round2(surfNette)} m²` },
+                { label: "Rendement", value: `${agglosParM2} agglos/m²` },
+                { label: `Total avec majoration ${perte}%`, value: `${nbAgglos} agglos`, big: true },
+            ], note: "Rendement calcul\u00E9 sur le format hors-tout (agglo + joint). Pr\u00E9voir un lot suppl\u00E9mentaire pour angles et arases." })));
+}
+function ModuleMortier() {
+    const [usage, setUsage] = useState("pose");
+    const [surf, setSurf] = useState("36");
+    const [epEnduit, setEpEnduit] = useState("1.5");
+    const [couches, setCouches] = useState("2");
+    const [dosage, setDosage] = useState("300");
+    const [perte, setPerte] = useState("10");
+    const majoration = 1 + (parseFloat(perte) || 0) / 100;
+    const volBrut = usage === "pose"
+        ? (parseFloat(surf) || 0) * 0.02
+        : (parseFloat(surf) || 0) * ((parseFloat(epEnduit) || 0) / 100) * (parseFloat(couches) || 1);
+    const vol = volBrut * majoration;
+    const d = DOSAGES_MORTIER[dosage];
+    const sacs = ceil0(vol * d.sacs);
+    const sable = round2(vol * d.sable);
+    const eau = Math.round(vol * d.eau);
+    return (React.createElement("div", { className: "grid md:grid-cols-2 gap-6" },
+        React.createElement(Panel, null,
+            React.createElement("h3", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "18px", color: "#EDEFF2", marginBottom: "16px" } }, "Mortier (pose ou enduit)"),
+            React.createElement(Segmented, { value: usage, onChange: setUsage, options: [
+                    { value: "pose", text: "Mortier de pose" },
+                    { value: "enduit", text: "Mortier d'enduit" },
+                ] }),
+            React.createElement(Field, { label: "Surface de mur concern\u00E9e", unit: "m\u00B2", value: surf, onChange: setSurf }),
+            usage === "enduit" && (React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "\u00C9paisseur par couche", unit: "cm", value: epEnduit, onChange: setEpEnduit, step: "0.5" }),
+                React.createElement(Field, { label: "Nombre de couches", unit: "", value: couches, onChange: setCouches, step: "1" }))),
+            React.createElement(Select, { label: "Dosage ciment", value: dosage, onChange: setDosage, options: Object.entries(DOSAGES_MORTIER).map(([k, v]) => ({ value: k, text: v.label })) }),
+            React.createElement(Field, { label: "Majoration / pertes", unit: "%", value: perte, onChange: setPerte, step: "1" })),
+        React.createElement(Bordereau, { title: "Mortier", ref_: usage === "pose" ? "POSE" : "ENDUIT", lines: [
+                { label: "Volume net", value: `${round2(volBrut)} m³` },
+                { label: `Avec majoration ${perte}%`, value: `${round2(vol)} m³`, big: true },
+                { label: "Ciment", value: `${sacs} sacs (50 kg)` },
+                { label: "Sable", value: `${sable} m³` },
+                { label: "Eau de gâchage", value: `${eau} L` },
+            ], note: usage === "pose" ? "Base : ≈0,02 m³ de mortier par m² de mur monté (épaisseur de joint équivalente). Ordre de grandeur chantier." : "Prévoir un gobetis avant la couche de finition si le support est lisse." })));
+}
+function ModulePlancher() {
+    const [portee, setPortee] = useState("4.5");
+    const [largeur, setLargeur] = useState("6");
+    const [entraxe, setEntraxe] = useState("0.6");
+    const [lHourdis, setLHourdis] = useState("0.55");
+    const [epChape, setEpChape] = useState("5");
+    const [dosageChape, setDosageChape] = useState("300");
+    const [perte, setPerte] = useState("5");
+    const en = parseFloat(entraxe) || 0.6;
+    const lg = parseFloat(largeur) || 0;
+    const po = parseFloat(portee) || 0;
+    const lh = parseFloat(lHourdis) || 0.55;
+    const majoration = 1 + (parseFloat(perte) || 0) / 100;
+    const nbPoutrelles = en > 0 ? ceil0(lg / en) + 1 : 0;
+    const nbRangeesHourdis = Math.max(0, nbPoutrelles - 1);
+    const nbHourdisParRangee = lh > 0 ? ceil0(po / lh) : 0;
+    const nbHourdisTotal = ceil0(nbRangeesHourdis * nbHourdisParRangee * majoration);
+    const mlPoutrelles = round2(nbPoutrelles * po);
+    const surfPlancher = lg * po;
+    const volChape = surfPlancher * ((parseFloat(epChape) || 0) / 100);
+    const dC = DOSAGES_BETON[dosageChape];
+    const sacsChape = ceil0(volChape * dC.sacs);
+    const sableChape = round2(volChape * dC.sable);
+    const gravierChape = round2(volChape * dC.gravier);
+    return (React.createElement("div", { className: "grid md:grid-cols-2 gap-6" },
+        React.createElement(Panel, null,
+            React.createElement("h3", { style: { fontFamily: "'Oswald', sans-serif", fontSize: "18px", color: "#EDEFF2", marginBottom: "16px" } }, "Plancher \u2014 poutrelles & hourdis"),
+            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "Port\u00E9e (sens des poutrelles)", unit: "m", value: portee, onChange: setPortee }),
+                React.createElement(Field, { label: "Largeur du plancher", unit: "m", value: largeur, onChange: setLargeur })),
+            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "Entraxe poutrelles", unit: "m", value: entraxe, onChange: setEntraxe }),
+                React.createElement(Field, { label: "Longueur d'un hourdis", unit: "m", value: lHourdis, onChange: setLHourdis })),
+            React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                React.createElement(Field, { label: "\u00C9paisseur chape de compression", unit: "cm", value: epChape, onChange: setEpChape }),
+                React.createElement(Field, { label: "Majoration / pertes", unit: "%", value: perte, onChange: setPerte, step: "1" })),
+            React.createElement(Select, { label: "Dosage b\u00E9ton de la chape", value: dosageChape, onChange: setDosageChape, options: Object.entries(DOSAGES_BETON).map(([k, v]) => ({ value: k, text: v.label })) })),
+        React.createElement(Bordereau, { title: "Plancher corps creux", ref_: `${round2(surfPlancher)} m²`, lines: [
+                { label: "Nombre de poutrelles", value: `${nbPoutrelles}`, big: true },
+                { label: "Longueur linéaire totale poutrelles", value: `${mlPoutrelles} ml` },
+                { label: "Rangées de hourdis (entre poutrelles)", value: `${nbRangeesHourdis}` },
+                { label: "Hourdis par rangée", value: `${nbHourdisParRangee}` },
+                { label: `Total hourdis (majoré ${perte}%)`, value: `${nbHourdisTotal}`, big: true },
+                { label: "Volume chape de compression", value: `${round2(volChape)} m³` },
+                { label: "Ciment chape", value: `${sacsChape} sacs (50 kg)` },
+                { label: "Sable / Gravier chape", value: `${sableChape} / ${gravierChape} m³` },
+            ], note: "Poutrelles pr\u00E9contraintes command\u00E9es \u00E0 la longueur de la port\u00E9e. V\u00E9rifier l'entraxe et la charge admissible aupr\u00E8s du fabricant." })));
+}
+/* ---------- App ---------- */
+function App() {
+    const [tab, setTab] = useState("beton");
+    const tabs = [
+        { id: "beton", label: "Béton" },
+        { id: "agglos", label: "Agglos" },
+        { id: "mortier", label: "Mortier" },
+        { id: "plancher", label: "Plancher" },
+    ];
+    return (React.createElement("div", { className: "min-h-screen w-full", style: { background: "#16232E", backgroundImage: "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)", backgroundSize: "34px 34px" } },
+        React.createElement("div", { className: "max-w-5xl mx-auto px-5 py-10" },
+            React.createElement("header", { className: "mb-8" },
+                React.createElement("div", { style: { fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.2em", color: "#E28D28" } }, "CALCUL BTP \u2014 M\u00C9TR\u00C9 & DOSAGES"),
+                React.createElement("h1", { className: "mt-1", style: { fontFamily: "'Oswald', sans-serif", fontSize: "clamp(28px, 7vw, 42px)", color: "#EDEFF2", letterSpacing: "0.01em", lineHeight: 1.05, margin: "4px 0 0" } }, "Bordereau de chantier"),
+                React.createElement("p", { className: "mt-2", style: { fontFamily: "'Inter', sans-serif", color: "#7E95A6", fontSize: "14.5px", maxWidth: "36rem" } }, "B\u00E9ton, ma\u00E7onnerie et planchers \u00E0 corps creux \u2014 quantit\u00E9s et dosages indicatifs selon les pratiques BTP courantes.")),
+            React.createElement("nav", { className: "flex flex-wrap gap-2 mb-7" }, tabs.map((t) => (React.createElement("button", { key: t.id, onClick: () => setTab(t.id), className: "px-4 py-2 rounded-sm", style: { fontFamily: "'Oswald', sans-serif", fontSize: "14px", letterSpacing: "0.04em", background: tab === t.id ? "#E28D28" : "#1B2A38", color: tab === t.id ? "#16232E" : "#9FB4C7", border: `1px solid ${tab === t.id ? "#E28D28" : "#2A4258"}`, fontWeight: tab === t.id ? 600 : 400, cursor: "pointer" } }, t.label)))),
+            tab === "beton" && React.createElement(ModuleBeton, null),
+            tab === "agglos" && React.createElement(ModuleAgglos, null),
+            tab === "mortier" && React.createElement(ModuleMortier, null),
+            tab === "plancher" && React.createElement(ModulePlancher, null),
+            React.createElement("footer", { className: "mt-10 pt-5", style: { borderTop: "1px solid #2A4258", fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: "#4E6478" } }, "Valeurs indicatives \u2014 \u00E0 confirmer par \u00E9tude de formulation et note de calcul selon la norme applicable (BAEL/Eurocode 2)."))));
+}
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
+
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
