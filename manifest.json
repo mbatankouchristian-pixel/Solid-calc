@@ -1,0 +1,10 @@
+{
+  "name": "BTP Calc Pro",
+  "short_name": "BTP Calc",
+  "description": "Application de calcul pour le génie civil et le bâtiment",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#1f2937",
+  "background_color": "#ffffff"
+}
