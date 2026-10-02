@@ -325,6 +325,18 @@ ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(
       navigator.serviceWorker.register("sw.js").catch(() => {});
     });
   }
+</script> <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./service-worker.js")
+      .then(function () {
+        console.log("Solid Calc : Service Worker activé");
+      })
+      .catch(function (error) {
+        console.error("Erreur Service Worker :", error);
+      });
+  });
+}
 </script>
 </body>
 </html>
