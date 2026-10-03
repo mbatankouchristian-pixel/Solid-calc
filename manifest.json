@@ -1,14 +1,15 @@
 {
-  "name": "Solid Calc",
-  "short_name": "Solid Calc",
-  "start_url": "./",
+  "name": "SolidCalc BTP",
+  "short_name": "SolidCalc",
+  "description": "Application professionnelle de calculs et métrés pour le BTP.",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#1f2937",
+  "theme_color": "#16212b",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icons/icon-512.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
